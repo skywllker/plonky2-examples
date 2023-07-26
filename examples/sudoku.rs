@@ -17,18 +17,15 @@ fn change_type(v: usize) -> u32 {
 }
 
 fn NotEqual<F: RichField + Extendable<D>, const D: usize>(b: &mut CircuitBuilder<F, D>, x: Target, y: Target) {
-    let k2 = b.one();
     let k1 = b.sub(x, y);
-    let z = b.div(k2, y);; 
+    let z = b.inverse(y);
     let k = b.mul(z, k1);
-    b.assert_zero(k);
+    b.assert_one(k);
 }
 
 fn AllDifferent<F: RichField + Extendable<D>, const D: usize>(b: &mut CircuitBuilder<F, D>, x: Vec<Target>) {
     for i in 0..x.len() {
-        for j in i+1..x.len() {
-           // let mut z = b.sub(x[i], x[j]);
-           // b.assert_zero(z);
+        for j in (i+1)..x.len() {
             NotEqual(b, x[i], x[j]);
         }
     }
@@ -69,14 +66,19 @@ fn main() -> Result<()> {
         }
     }
 
-    // Assert that the solved grid is a valid sudoku grid.
+    // check the solved grid is a valid solution
+    // check all cells are in range
     for i in 0..4 {
         for j in 0..4 {
-            builder.range_check(solved_grid[i * 4 + j], 3);
+            let mut temp1 = builder.one();
+            let mut temp2 = builder.sub(solved_grid[i * 4 + j], temp1);
+            builder.range_check(temp2, 2);
+            temp1 = builder.constant(F::from_canonical_u32(3));
+            let mut temp3 = builder.sub(temp1, temp2);
+            builder.range_check(temp3, 2);
         }
     }
-
-    // check the solved grid is a valid solution
+    // check all rows are different
     for i in 0..4 {
         AllDifferent(&mut builder, solved_grid[i*4..(i+1)*4].to_vec());
     }
