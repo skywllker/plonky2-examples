@@ -18,7 +18,7 @@ fn change_type(v: usize) -> u32 {
 
 fn NotEqual<F: RichField + Extendable<D>, const D: usize>(b: &mut CircuitBuilder<F, D>, x: Target, y: Target) {
     let k1 = b.sub(x, y);
-    let z = b.inverse(y);
+    let z = b.inverse(k1);
     let k = b.mul(z, k1);
     b.assert_one(k);
 }
@@ -78,9 +78,10 @@ fn main() -> Result<()> {
             builder.range_check(temp3, 2);
         }
     }
+
     // check all rows are different
     for i in 0..4 {
-        AllDifferent(&mut builder, solved_grid[i*4..(i+1)*4].to_vec());
+        AllDifferent(&mut builder, solved_grid[(i*4)..((i+1)*4)].to_vec());
     }
 
     // check both grids are compitable
@@ -92,7 +93,6 @@ fn main() -> Result<()> {
         }
     }
 
-    
     // generate circuit data
     let data = builder.build::<C>();
     let mut pw = PartialWitness::<F>::new();
@@ -106,12 +106,10 @@ fn main() -> Result<()> {
         for j in 0..4 {
             if change_type(j+i).rem_euclid(4) == 3 {
                 pw.set_target(unsolved_grid[i * 4 + j], F::ZERO);
-                println!("{}", F::ZERO);
 
             }
             else {
                 pw.set_target(unsolved_grid[i * 4 + j], F::from_canonical_u32((change_type(j).rem_euclid(4)+1)));
-                println!("{}", F::from_canonical_u32((change_type(j).rem_euclid(4)+1)));
             }
         }
     }
