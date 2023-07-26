@@ -39,7 +39,7 @@ fn main() -> Result<()> {
     // We want to prove that unsolved_grid is a valid sudoku grid and that it is
     // a solution to solved_grid.
     // this sudoku version for 4*4 grid and it just looks if every row has 1, 2, 3, 4 permutation
-    
+
 
     // standard proof setup
     let config = CircuitConfig::standard_recursion_config();
@@ -109,53 +109,3 @@ fn main() -> Result<()> {
 
     Ok(())
 }
-/* 
-    // Assert that the unsolved grid is a valid sudoku grid.
-    for (i, j) in (0..9).flat_map(|i| (i, 0..9)) {
-        builder.range_checker(unsolved_grid[i * 9 + j], 1, 9);
-    }
-
-    // Assert that solved_grid is a solution to unsolved_grid.
-    for (i, j) in (0..9).flat_map(|i| (i, 0..9)) {
-        builder.is_equal(solved_grid[i * 9 + j], unsolved_grid[i * 9 + j]);
-    }
-
-    // Check rows.
-    for i in 0..9 {
-        for j in 0..9 {
-            builder.contains_all(solved_grid[i * 9 + j], 9);
-        }
-    }
-
-    // Check columns.
-    for i in 0..9 {
-        for j in 0..9 {
-            builder.contains_all(solved_grid[j * 9 + i], 9);
-        }
-    }
-
-    // Check submatrices.
-    for i in 0..9; i += 3 {
-        for j in 0..9; j += 3 {
-            for k in 0..3; k++ {
-                for l in 0..3; l++ {
-                    builder.contains_all(solved_grid[i + k * 3][j + l * 3], 9);
-                }
-            }
-        }
-    }
-
-    // generate circuit data
-    let data = builder.build::<C>();
-    let mut pw = PartialWitness::<F>::new();
-
-    // Provide initial values.
-    pw.set_public_input_array(unsolved_grid, [1, 2, 3, 4, 5, 6, 7, 8, 9].repeat(9));
-    pw.set_private_input_array(solved_grid, [1, 2, 3, 4, 5, 6, 7, 8, 9].repeat(9));
-
-    // Generate proof
-    let proof = data.prove(pw)?;
-    data.verify(proof)?;
-
-    Ok(())
-    */
