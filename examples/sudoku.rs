@@ -99,20 +99,22 @@ fn main() -> Result<()> {
     // Provide initial values.
     for i in 0..4 {
         for j in 0..4 {
-            pw.set_target(solved_grid[i * 4 + j], F::from_canonical_u32((change_type(j+i).rem_euclid(4)+1)));
+            pw.set_target(solved_grid[i * 4 + j], F::from_canonical_u32((change_type(j).rem_euclid(4)+1)));
         }
     }
     for i in 0..4 {
         for j in 0..4 {
             if change_type(j+i).rem_euclid(4) == 3 {
                 pw.set_target(unsolved_grid[i * 4 + j], F::ZERO);
+                println!("{}", F::ZERO);
+
             }
             else {
-                pw.set_target(unsolved_grid[i * 4 + j], F::from_canonical_u32((change_type(j+i).rem_euclid(4)+1)));
+                pw.set_target(unsolved_grid[i * 4 + j], F::from_canonical_u32((change_type(j).rem_euclid(4)+1)));
+                println!("{}", F::from_canonical_u32((change_type(j).rem_euclid(4)+1)));
             }
         }
     }
-
 
     // Generate proof
     let proof = data.prove(pw)?;
