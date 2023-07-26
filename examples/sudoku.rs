@@ -83,6 +83,14 @@ fn main() -> Result<()> {
         AllDifferent(&mut builder, solved_grid[i*4..(i+1)*4].to_vec());
     }
 
+    // check both grids are compitable
+    for i in 0..4 {
+        for j in 0..4 {
+            let temp5 = builder.sub(unsolved_grid[i * 4 + j], solved_grid[i * 4 + j]);
+            let temp6 = builder.mul(unsolved_grid[i * 4 + j], temp5);
+            builder.assert_zero(temp6);
+        }
+    }
 
     
     // generate circuit data
@@ -105,14 +113,6 @@ fn main() -> Result<()> {
         }
     }
 
-    // check both grids are compitable
-    for i in 0..4 {
-        for j in 0..4 {
-            let mut temp1 = builder.sub(unsolved_grid[i * 4 + j], solved_grid[i * 4 + j]);
-            let mut temp2 = builder.mul(unsolved_grid[i * 4 + j], temp1);
-            builder.assert_zero(temp2);
-        }
-    }
 
     // Generate proof
     let proof = data.prove(pw)?;
