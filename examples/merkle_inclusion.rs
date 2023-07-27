@@ -6,9 +6,6 @@ use plonky2::{
 };
 use anyhow::{Result, Ok};
 
-
-
-
 fn main() -> Result<()> {
     // standard proof setup
     type F = GoldilocksField;
