@@ -6,6 +6,8 @@ use plonky2::{
 };
 use anyhow::{Result, Ok};
 
+// usage of merkle tree library very basicly
+// can be used as general layer of how to use merkle tree
 fn main() -> Result<()> {
     // standard proof setup
     type F = GoldilocksField;
