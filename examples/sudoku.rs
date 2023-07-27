@@ -1,8 +1,7 @@
 use plonky2::{
     field::{goldilocks_field::GoldilocksField, types::Field, extension::Extendable},
     iop::witness::{PartialWitness, WitnessWrite},
-    iop::witness::Witness,
-    iop::target::{BoolTarget, Target},
+    iop::target:: Target,
     hash::hash_types::RichField,
     plonk::{
         circuit_builder::CircuitBuilder, circuit_data::CircuitConfig,
