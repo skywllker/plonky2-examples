@@ -32,6 +32,7 @@ pub fn ground_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F=F>, cons
     
     let config = CircuitConfig::standard_recursion_config();
     let mut builder = CircuitBuilder::<F, D>::new(config);
+    // make zeros public in somehow
     let real_zero : [Target; 4] = builder.add_virtual_targets(4).try_into().unwrap();
     let zero_hash = builder.hash_n_to_hash_no_pad::<PoseidonHash>(real_zero.to_vec());
 
@@ -40,14 +41,19 @@ pub fn ground_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F=F>, cons
     let mut input2 : [Target; 4] = builder.add_virtual_targets(4).try_into().unwrap();
 
     for i in 0..4 {
+        // control for every item of input2 is equal to input1 or zero_hash
         let temp1 = builder.sub(input1[i], input2[i]);
         let temp2 = builder.neg(input2[i]);
         let temp3 = builder.add(temp2, zero_hash.elements[i]);
         let temp4 = builder.mul(temp1, temp3);
         builder.assert_zero(temp4);
-    }    
+    }
+    // add input1 and input2 to public inputs, than add zero_hash to public inputs
+    // we add zero_hash to public inputs because we use it in the circuit, people 
+    // should know we really used real zero hash.      
     builder.register_public_inputs(&input1);
     builder.register_public_inputs(&input2);
+    builder.register_public_inputs(&zero_hash.elements);
 
     let mut pw = PartialWitness::new();
     let data = builder.build::<C>();
