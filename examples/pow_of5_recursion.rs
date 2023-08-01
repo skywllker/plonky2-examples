@@ -22,8 +22,7 @@ pub struct ProofTuple<F: RichField+Extendable<D>, C:GenericConfig<D, F=F>, const
     cd: CommonCircuitData<F, D>,
     depth: u32,
 }
-
-//Generates a ground proof of the hash chain of batch size B, and exposes its head and tail as public inputs for further composition.
+// generates ground proof for a step
 pub fn ground_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F=F>, const D: usize, const B: usize>(inp:u64)->ProofTuple<F,C,D>{
     
     let config = CircuitConfig::standard_recursion_config();
@@ -63,7 +62,6 @@ inner_l: &ProofTuple<F, C, D>, inner_r: &ProofTuple<F,C,D>,
 where
 C::Hasher: AlgebraicHasher<F>,   
 {
-    println!("RECURSİVE PROOF");
     let config = CircuitConfig::standard_recursion_config();
     let mut builder = CircuitBuilder::<F, D>::new(config);
 //    assert_eq!(inner_l.depth, inner_r.depth, "Trying to merge proofs of different depth!");
@@ -96,7 +94,7 @@ C::Hasher: AlgebraicHasher<F>,
 
 }
 
-
+// this function generates the tree of proofs recursively
 pub fn recursive_tree<F: RichField + Extendable<D>, C:GenericConfig<D, F=F>, const D: usize>
     (
         location: u64,
@@ -120,10 +118,11 @@ pub fn recursive_tree<F: RichField + Extendable<D>, C:GenericConfig<D, F=F>, con
         }
     }
 
+// This function runs the whole thing.
 pub fn run<
         F: RichField + Extendable<D>,
         C:GenericConfig<D, F=F>,
-        const D: usize> (global_cutoff: u128, input: F, init_value: u64)
+        const D: usize> (init_value: u64)
             ->
         Result<VerifierCircuitData<F,C,D>>
             where
@@ -182,7 +181,7 @@ pub fn test() -> Result<()> {
     let mut cutoff = (rng.next_u64() % 35) as u128;
 
     
-    let vd1 = run::<F,C,D>(cutoff, input, init_value)?; // Currently not using rayon. Maybe should (it gives some performance gain even on my machine).
+    let vd1 = run::<F,C,D>(init_value)?; // Currently not using rayon. Maybe should (it gives some performance gain even on my machine).
 
     println!("Run again to check that the verifier data of the final proof is the same!\n");
 
@@ -190,18 +189,13 @@ pub fn test() -> Result<()> {
 
 
 
-    let vd2 = run::<F,C,D>(cutoff, input, init_value)?;
+    let vd2 = run::<F,C,D>(init_value)?;
 
     println!("Checking that verifier circuit data is the same for two proofs! \n");
 
     assert_eq!(vd1.verifier_only, vd2.verifier_only);
     assert_eq!(vd1.common, vd2.common);
-
-
     println!("Victory! :3");
-
-
-
     Ok(())
 }
 
