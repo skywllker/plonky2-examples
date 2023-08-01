@@ -72,9 +72,9 @@ pub fn ground_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F=F>, cons
 }
 
 
-/// This function merges two proofs with 2 public inputs each, treated as follows: 0 is "input", 1 is "output"
-/// It requires that output of the first proof is the input of the second
-/// It exposes the input of the first proof and the output of the second
+/// This function merges two proofs with 12 public inputs each, treated as follows: from 0 to 3 is "input1", from 4 to 7 is "input2", from 8 to 11 is "zero_hash"
+/// It requires that both zero_hashes are same
+/// We return H(input1[0..4], input2[0..4]), H(input1[4..8], input2[4..8]), and zero_hash as public input
 pub fn recursive_proof<
 F: RichField + Extendable<D>,
 C: GenericConfig<D, F = F>,
@@ -87,7 +87,6 @@ C::Hasher: AlgebraicHasher<F>,
 {
     let config = CircuitConfig::standard_recursion_config();
     let mut builder = CircuitBuilder::<F, D>::new(config);
-//    assert_eq!(inner_l.depth, inner_r.depth, "Trying to merge proofs of different depth!");
 
     let pt_l = builder.add_virtual_proof_with_pis(& inner_l.cd);
     let pt_r = builder.add_virtual_proof_with_pis(& inner_r.cd);
@@ -104,9 +103,23 @@ C::Hasher: AlgebraicHasher<F>,
     pw.set_verifier_data_target::<C,D>(& inner_vdt_l, & inner_l.vd);
     pw.set_verifier_data_target::<C,D>(& inner_vdt_r, & inner_r.vd);
 
-
-
+    for i in 8..12 {
+        builder.connect(pt_l.public_inputs[i], pt_r.public_inputs[i])
+    }
     // hash (pt_l.public_inputs[0], pt_r.public_inputs[0]) register this as public input
+    
+    // pubkey is first 4 elements of public_inputs
+    let pub_key0 = pt_l.public_inputs[0..4].try_into().unwrap();
+    let pub_key1 = pt_r.public_inputs[0..4].try_into().unwrap();
+    // concat
+    let pub_keys = pub_key0
+        .iter()
+        .chain(pub_key1.iter())
+        .cloned()
+        .collect::<Vec<F>>();
+    // hash
+    let pub_keys_hash = PoseidonHash::hash_no_pad(&pub_keys);
+    
     // hash (pt_l.public_inputs[1], pt_r.public_inputs[1]) register this as public input
 
     let data = builder.build::<C>();
