@@ -1,5 +1,6 @@
 use anyhow::Result;
 use plonky2::hash::poseidon::PoseidonHash;
+use plonky2::iop::target::Target;
 use rand::rngs::OsRng;
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -9,7 +10,7 @@ use plonky2::field::types::Field;
 use plonky2::iop::witness::{PartialWitness, WitnessWrite};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::{CircuitConfig, CommonCircuitData, VerifierOnlyCircuitData, VerifierCircuitData};
-use plonky2::plonk::config::{AlgebraicHasher, GenericConfig, PoseidonGoldilocksConfig, Hasher};
+use plonky2::plonk::config::{AlgebraicHasher, GenericConfig, PoseidonGoldilocksConfig, Hasher, GenericHashOut};
 use plonky2::plonk::proof::ProofWithPublicInputs;
 use plonky2::hash::hash_types::RichField;
 
@@ -28,28 +29,32 @@ pub struct ProofTuple<F: RichField+Extendable<D>, C:GenericConfig<D, F=F>, const
 
 // generates ground proof for a step
 pub fn ground_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F=F>, const D: usize, const B: usize>(inp1: &[F; 4], inp2: &[F; 4], cutoff: usize)->ProofTuple<F,C,D>{
-    let real_zero = F::ZERO;
-    let zero_hash = PoseidonHash::hash_no_pad(&real_zero.collect::<Vec<F>>());
-
+    
     let config = CircuitConfig::standard_recursion_config();
     let mut builder = CircuitBuilder::<F, D>::new(config);
+    let real_zero : [Target; 4] = builder.add_virtual_targets(4).try_into().unwrap();
+    let zero_hash = builder.hash_n_to_hash_no_pad::<PoseidonHash>(real_zero.to_vec());
 
-    // aritmatic circuit to input1 = input2 or input2 = 0     
-    let input1 = builder.add_virtual_target();
-    let input2 = builder.add_virtual_target();
-    let temp1 = builder.sub(input1, input2);
-    let temp2 = builder.neg(input2);
-    let temp3 = builder.add_const(temp2, real_zero);
-    let temp4 = builder.mul(temp1, temp3);
-    builder.assert_zero(temp4);
+    // aritmatic circuit to input1 = input2 or input2 = 0 
+    let mut input1 : [Target; 4] = builder.add_virtual_targets(4).try_into().unwrap();
+    let mut input2 : [Target; 4] = builder.add_virtual_targets(4).try_into().unwrap();
 
+    for i in 0..4 {
+        let temp1 = builder.sub(input1[i], input2[i]);
+        let temp2 = builder.neg(input2[i]);
+        let temp3 = builder.add(temp2, zero_hash.elements[i]);
+        let temp4 = builder.mul(temp1, temp3);
+        builder.assert_zero(temp4);
+    }    
+    builder.register_public_inputs(&input1);
+    builder.register_public_inputs(&input2);
 
     let mut pw = PartialWitness::new();
-
-    builder.register_public_input(input1);
-    builder.register_public_input(input2);
-
     let data = builder.build::<C>();
+    for i in 0..4 {
+        pw.set_target(input1[i], inp1[i]);
+        pw.set_target(input2[i], inp2[i]);
+    }
     let proof = data.prove(pw).unwrap();
 
     ProofTuple{
@@ -92,6 +97,8 @@ C::Hasher: AlgebraicHasher<F>,
     pw.set_proof_with_pis_target::<C, D>(& pt_r, & inner_r.proof);
     pw.set_verifier_data_target::<C,D>(& inner_vdt_l, & inner_l.vd);
     pw.set_verifier_data_target::<C,D>(& inner_vdt_r, & inner_r.vd);
+
+
 
     // hash (pt_l.public_inputs[0], pt_r.public_inputs[0]) register this as public input
     // hash (pt_l.public_inputs[1], pt_r.public_inputs[1]) register this as public input
@@ -148,7 +155,6 @@ pub fn run<
 
     let tmp = Instant::now();
     // Trivial proof phase computation, it can be separated into the precompute phase with the small modification of the circuit; and recursive circuit
-    // I'm a bit too lazy to mess with this now. This phase will take < time than the main phase in any case.
     let mut trivial_proofs = Vec::new();
     trivial_proofs.push(ground_proof::<F,C,D,BATCH_SIZE>(init_value));
     let mut x = init_value;
