@@ -1,4 +1,5 @@
 use anyhow::Result;
+use plonky2::hash::poseidon::PoseidonHash;
 use rand::rngs::OsRng;
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -8,7 +9,7 @@ use plonky2::field::types::Field;
 use plonky2::iop::witness::{PartialWitness, WitnessWrite};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::{CircuitConfig, CommonCircuitData, VerifierOnlyCircuitData, VerifierCircuitData};
-use plonky2::plonk::config::{AlgebraicHasher, GenericConfig, PoseidonGoldilocksConfig};
+use plonky2::plonk::config::{AlgebraicHasher, GenericConfig, PoseidonGoldilocksConfig, Hasher};
 use plonky2::plonk::proof::ProofWithPublicInputs;
 use plonky2::hash::hash_types::RichField;
 
@@ -22,20 +23,31 @@ pub struct ProofTuple<F: RichField+Extendable<D>, C:GenericConfig<D, F=F>, const
     cd: CommonCircuitData<F, D>,
     depth: u32,
 }
+
+
+
 // generates ground proof for a step
-pub fn ground_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F=F>, const D: usize, const B: usize>(inp:u64)->ProofTuple<F,C,D>{
-    
+pub fn ground_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F=F>, const D: usize, const B: usize>(inp1: &[F; 4], inp2: &[F; 4], cutoff: usize)->ProofTuple<F,C,D>{
+    let real_zero = F::ZERO;
+    let zero_hash = PoseidonHash::hash_no_pad(&real_zero.collect::<Vec<F>>());
+
     let config = CircuitConfig::standard_recursion_config();
     let mut builder = CircuitBuilder::<F, D>::new(config);
 
-    // aritmatic circuit to output = input * 5        
-    let input = builder.add_virtual_target();
-    let output = builder.mul_const(F::from_canonical_u64(5), input);
-    let mut pw = PartialWitness::new();
-    pw.set_target(input, F::from_canonical_u64(inp));
-    builder.register_public_input(input);
-    builder.register_public_input(output);
+    // aritmatic circuit to input1 = input2 or input2 = 0     
+    let input1 = builder.add_virtual_target();
+    let input2 = builder.add_virtual_target();
+    let temp1 = builder.sub(input1, input2);
+    let temp2 = builder.neg(input2);
+    let temp3 = builder.add_const(temp2, real_zero);
+    let temp4 = builder.mul(temp1, temp3);
+    builder.assert_zero(temp4);
 
+
+    let mut pw = PartialWitness::new();
+
+    builder.register_public_input(input1);
+    builder.register_public_input(input2);
 
     let data = builder.build::<C>();
     let proof = data.prove(pw).unwrap();
@@ -132,10 +144,10 @@ pub fn run<
     // This is the amount of stacked hashes we put into the elementary ground proof. In theory, optimal behaviour is having it big enough such that the
     // execution time of the ground proof is ~ equivalent to the recursive proof exec time.
 
-    const BATCH_SIZE: usize = 16;
+    const BATCH_SIZE: usize = 4;
 
     // this is the total depth of recursion batches. pow(2, depth)*BATCH_SIZE hashes must be infeasible to do sequentially.
-    const DEPTH: usize = 4;
+    const DEPTH: usize = 2;
 
     let tmp = Instant::now();
     // Trivial proof phase computation, it can be separated into the precompute phase with the small modification of the circuit; and recursive circuit
