@@ -87,17 +87,14 @@ C::Hasher: AlgebraicHasher<F>,
     builder.verify_proof::<C>(&pt_l, &inner_vdt_l, &inner_l.cd);
     builder.verify_proof::<C>(&pt_r, &inner_vdt_r, &inner_r.cd);
 
-    // the output of pt_l is constrained to the input of pt_r
-    builder.connect(pt_l.public_inputs[1], pt_r.public_inputs[0]);
-
     let mut pw = PartialWitness::new();
     pw.set_proof_with_pis_target::<C, D>(& pt_l, & inner_l.proof);
     pw.set_proof_with_pis_target::<C, D>(& pt_r, & inner_r.proof);
     pw.set_verifier_data_target::<C,D>(& inner_vdt_l, & inner_l.vd);
     pw.set_verifier_data_target::<C,D>(& inner_vdt_r, & inner_r.vd);
 
-    builder.register_public_input(pt_l.public_inputs[0]);
-    builder.register_public_input(pt_r.public_inputs[1]);
+    // hash (pt_l.public_inputs[0], pt_r.public_inputs[0]) register this as public input
+    // hash (pt_l.public_inputs[1], pt_r.public_inputs[1]) register this as public input
 
     let data = builder.build::<C>();
     
@@ -166,6 +163,8 @@ pub fn run<
     println!("Lets come to final proof!");
     let final_proof = recursive_tree::<F,C,D>(0, BATCH_SIZE, DEPTH, &trivial_proofs);
     println!("Final proofs public inputs: {:#?}", final_proof.proof.public_inputs);
+    // final proof public inputs should be root of original merkle tree
+    // and root of subset merkle tree if the subset is really a subset of original
     
     let tmp2 = Instant::now();
     println!("Computation took {}ms", (tmp2-tmp).as_millis());
