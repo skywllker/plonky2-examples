@@ -10,7 +10,7 @@ use plonky2::field::types::Field;
 use plonky2::iop::witness::{PartialWitness, WitnessWrite};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::{CircuitConfig, CommonCircuitData, VerifierOnlyCircuitData, VerifierCircuitData};
-use plonky2::plonk::config::{AlgebraicHasher, GenericConfig, PoseidonGoldilocksConfig, Hasher, GenericHashOut};
+use plonky2::plonk::config::{AlgebraicHasher, GenericConfig, PoseidonGoldilocksConfig};
 use plonky2::plonk::proof::ProofWithPublicInputs;
 use plonky2::hash::hash_types::RichField;
 
@@ -28,23 +28,23 @@ pub struct ProofTuple<F: RichField+Extendable<D>, C:GenericConfig<D, F=F>, const
 
 
 // generates ground proof for a step
-pub fn ground_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F=F>, const D: usize, const B: usize>(inp1: &[F; 4], inp2: &[F; 4], cutoff: usize)->ProofTuple<F,C,D>{
+pub fn ground_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F=F>, const D: usize, const B: usize>(inp1: &[F; 4], inp2: &[F; 4])->ProofTuple<F,C,D>{
     
     let config = CircuitConfig::standard_recursion_config();
     let mut builder = CircuitBuilder::<F, D>::new(config);
     // make zeros public in somehow
     let real_zero : [Target; 4] = builder.add_virtual_targets(4).try_into().unwrap();
-    let zero_hash = builder.hash_n_to_hash_no_pad::<PoseidonHash>(real_zero.to_vec());
+//    let zero_hash = builder.hash_n_to_hash_no_pad::<PoseidonHash>(real_zero.to_vec());
 
     // aritmatic circuit to input1 = input2 or input2 = 0 
-    let mut input1 : [Target; 4] = builder.add_virtual_targets(4).try_into().unwrap();
-    let mut input2 : [Target; 4] = builder.add_virtual_targets(4).try_into().unwrap();
+    let input1 : [Target; 4] = builder.add_virtual_targets(4).try_into().unwrap();
+    let input2 : [Target; 4] = builder.add_virtual_targets(4).try_into().unwrap();
 
     for i in 0..4 {
         // control for every item of input2 is equal to input1 or zero_hash
         let temp1 = builder.sub(input1[i], input2[i]);
         let temp2 = builder.neg(input2[i]);
-        let temp3 = builder.add(temp2, zero_hash.elements[i]);
+        let temp3 = builder.add_const(temp2, F::ZERO);
         let temp4 = builder.mul(temp1, temp3);
         builder.assert_zero(temp4);
     }
@@ -53,7 +53,6 @@ pub fn ground_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F=F>, cons
     // should know we really used real zero hash.      
     builder.register_public_inputs(&input1);
     builder.register_public_inputs(&input2);
-    builder.register_public_inputs(&zero_hash.elements);
 
     let mut pw = PartialWitness::new();
     let data = builder.build::<C>();
@@ -97,30 +96,41 @@ C::Hasher: AlgebraicHasher<F>,
     builder.verify_proof::<C>(&pt_l, &inner_vdt_l, &inner_l.cd);
     builder.verify_proof::<C>(&pt_r, &inner_vdt_r, &inner_r.cd);
 
+    // hash (pt_l.public_inputs[0], pt_r.public_inputs[0]) register this as public input
+    // pubkey is first 4 elements of public_inputs
+    let pub_key0 = &pt_l.public_inputs[0..4];
+    let pub_key1 = &pt_r.public_inputs[0..4];
+    // concat
+    let pub_keys = pub_key0
+        .iter()
+        .chain(pub_key1.iter())
+        .cloned()
+        .collect::<Vec<Target>>();
+    // hash
+    let pub_keys_hash = builder.hash_n_to_hash_no_pad::<PoseidonHash>(pub_keys.to_vec());
+
+    // hash (pt_l.public_inputs[1], pt_r.public_inputs[1]) register this as public input
+    // pubkey is first 4 elements of public_inputs
+    let pub_key02 = &pt_l.public_inputs[4..8];
+    let pub_key12 = &pt_r.public_inputs[4..8];
+    // concat
+    let pub_keys2 = pub_key02
+        .iter()
+        .chain(pub_key12.iter())
+        .cloned()
+        .collect::<Vec<Target>>();
+    // hash
+    let pub_keys_hash2 = builder.hash_n_to_hash_no_pad::<PoseidonHash>(pub_keys2.to_vec());
+
     let mut pw = PartialWitness::new();
     pw.set_proof_with_pis_target::<C, D>(& pt_l, & inner_l.proof);
     pw.set_proof_with_pis_target::<C, D>(& pt_r, & inner_r.proof);
     pw.set_verifier_data_target::<C,D>(& inner_vdt_l, & inner_l.vd);
     pw.set_verifier_data_target::<C,D>(& inner_vdt_r, & inner_r.vd);
 
-    for i in 8..12 {
-        builder.connect(pt_l.public_inputs[i], pt_r.public_inputs[i])
-    }
-    // hash (pt_l.public_inputs[0], pt_r.public_inputs[0]) register this as public input
-    
-    // pubkey is first 4 elements of public_inputs
-    let pub_key0 = pt_l.public_inputs[0..4].try_into().unwrap();
-    let pub_key1 = pt_r.public_inputs[0..4].try_into().unwrap();
-    // concat
-    let pub_keys = pub_key0
-        .iter()
-        .chain(pub_key1.iter())
-        .cloned()
-        .collect::<Vec<F>>();
-    // hash
-    let pub_keys_hash = PoseidonHash::hash_no_pad(&pub_keys);
-    
-    // hash (pt_l.public_inputs[1], pt_r.public_inputs[1]) register this as public input
+    builder.register_public_inputs(&pub_keys_hash.elements);
+    builder.register_public_inputs(&pub_keys_hash2.elements);
+
 
     let data = builder.build::<C>();
     
@@ -157,7 +167,7 @@ pub fn recursive_tree<F: RichField + Extendable<D>, C:GenericConfig<D, F=F>, con
 pub fn run<
         F: RichField + Extendable<D>,
         C:GenericConfig<D, F=F>,
-        const D: usize> (init_value: u64)
+        const D: usize> (_init_value: u64)
             ->
         Result<VerifierCircuitData<F,C,D>>
             where
@@ -173,18 +183,27 @@ pub fn run<
     const DEPTH: usize = 2;
 
     let tmp = Instant::now();
+
+    // generate 4 random [F; 4] arrays
+    let inputs1 = [[F::ONE, F::ZERO, F::ZERO, F::ZERO],
+    [F::ZERO, F::ONE, F::ZERO, F::ZERO],
+    [F::ZERO, F::ZERO, F::ONE, F::ZERO],
+    [F::ZERO, F::ZERO, F::ZERO, F::ONE]];
+    let mut inputs2 = inputs1.clone();
+    inputs2[0][0] = F::ZERO;
+    
+
+
     // Trivial proof phase computation, it can be separated into the precompute phase with the small modification of the circuit; and recursive circuit
     let mut trivial_proofs = Vec::new();
-    trivial_proofs.push(ground_proof::<F,C,D,BATCH_SIZE>(init_value));
-    let mut x = init_value;
+    println!("GİRMEDİ");
+    trivial_proofs.push(ground_proof::<F,C,D,BATCH_SIZE>(&inputs1[0], &inputs2[0]));
     for i in 1..BATCH_SIZE {
-        println!("={:#?}", trivial_proofs[i-1].proof.public_inputs);
-        x = x*5;
-        trivial_proofs.push(ground_proof::<F,C,D,BATCH_SIZE>(x));
+        println!("GROUND PUBLICS: {:#?}", trivial_proofs[i-1].proof.public_inputs);
+        trivial_proofs.push(ground_proof::<F,C,D,BATCH_SIZE>(&inputs1[i], &inputs2[i]));
 
     }
     println!("FOR LOOOOP FİNİSHED");
-
     println!("Lets come to final proof!");
     let final_proof = recursive_tree::<F,C,D>(0, BATCH_SIZE, DEPTH, &trivial_proofs);
     println!("Final proofs public inputs: {:#?}", final_proof.proof.public_inputs);
@@ -208,21 +227,14 @@ pub fn test() -> Result<()> {
     type F = <C as GenericConfig<D>>::F;
     
     let rng_seed = OsRng::default().next_u64();
-    let mut rng = ChaCha8Rng::seed_from_u64(rng_seed);
+    let rng = ChaCha8Rng::seed_from_u64(rng_seed);
 
     let input = F::ONE;
     let init_value = 5;
-
-
-    let mut cutoff = (rng.next_u64() % 35) as u128;
-
     
     let vd1 = run::<F,C,D>(init_value)?; // Currently not using rayon. Maybe should (it gives some performance gain even on my machine).
 
     println!("Run again to check that the verifier data of the final proof is the same!\n");
-
-    cutoff = (rng.next_u64() % 10000) as u128;
-
 
 
     let vd2 = run::<F,C,D>(init_value)?;
