@@ -24,7 +24,12 @@ pub struct ProofTuple<F: RichField+Extendable<D>, C:GenericConfig<D, F=F>, const
     depth: u32,
 }
 
-
+pub fn zero_hash<F: RichField, H: Hasher<F>>(
+    input: [F; 4]
+) -> H::Hash {
+    let output = H::hash_no_pad(&input);
+    output
+}
 
 // generates ground proof for a step
 pub fn ground_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F=F>, const D: usize, const B: usize>(inp1: &Vec<F>, inp2: &Vec<F>)->ProofTuple<F,C,D>{
@@ -168,9 +173,10 @@ pub fn run<
         H: plonky2::plonk::config::Hasher<F>,
         const D: usize> (inputs1: Vec<Vec<F>>, inputs2: Vec<Vec<F>>)
             ->
-        Result<VerifierCircuitData<F,C,D>>
+        (Result<VerifierCircuitData<F,C,D>>,
+        [F; 4], [F; 4])
             where
-        C::Hasher: AlgebraicHasher<F>, 
+        C::Hasher: AlgebraicHasher<F>
     {
 
     // This is the amount of stacked hashes we put into the elementary ground proof. In theory, optimal behaviour is having it big enough such that the
@@ -211,7 +217,9 @@ pub fn run<
     println!("Proof size: {} bytes\n",final_proof.proof.to_bytes().len());
 
     println!("Last Proof Verification");
-    Ok(VerifierCircuitData::<F,C,D>{verifier_only: final_proof.vd, common: final_proof.cd})
+    (Ok(VerifierCircuitData::<F,C,D>{verifier_only: final_proof.vd, common: final_proof.cd}),
+        final_proof.proof.public_inputs[0..4].try_into().unwrap(),
+        final_proof.proof.public_inputs[4..8].try_into().unwrap())
 }
 
 pub fn roots<F: RichField, H: Hasher<F>>(
@@ -247,16 +255,14 @@ pub fn test() -> Result<()> {
 
     let mut subset_leaves = original_leaves.clone();
     subset_leaves[0][0] = F::ZERO;
-
-    let init_value = 5;
     
-    let vd1 = run::<F,C,H,D>(original_leaves.clone(), subset_leaves.clone())?; // Currently not using rayon. Maybe should (it gives some performance gain even on my machine).
-
+    let (mut vd1, pb11, pb12)= run::<F,C,H,D>(original_leaves.clone(), subset_leaves.clone()); // Currently not using rayon. Maybe should (it gives some performance gain even on my machine).
+    let vd1 = vd1?;
     println!("Run again to check that the verifier data of the final proof is the same!\n");
 
 
-    let vd2 = run::<F,C,H,D>(original_leaves.clone(), subset_leaves.clone())?;
-
+    let (mut vd2, pb21, pb22) = run::<F,C,H,D>(original_leaves.clone(), subset_leaves.clone());
+    let vd2 = vd2?;
     println!("Checking that verifier circuit data is the same for two proofs! \n");
 
     assert_eq!(vd1.verifier_only, vd2.verifier_only);
@@ -268,8 +274,15 @@ pub fn test() -> Result<()> {
 
     // Create a new Merkle tree.
     let original_merkle_tree: MerkleTree<GoldilocksField, PoseidonHash> = MerkleTree::<F, H>::new(original_leaves.clone(), cap_height);
-    println!("ROOT {:#?} ", roots(&original_merkle_tree.cap));
+    let subset_merkle_tree: MerkleTree<GoldilocksField, PoseidonHash> = MerkleTree::<F, H>::new(subset_leaves.clone(), cap_height);
 
+    if roots(&original_merkle_tree.cap).elements == pb11 {
+        println!("Original merkle roots matches");
+    }
+    if roots(&subset_merkle_tree.cap).elements == pb12 {
+        println!("Subset merkle roots matches");
+    }
+    println!("Zero Hash is: {:#?}", zero_hash::<F,H>([F::ZERO, F::ZERO, F::ZERO, F::ZERO]));
     Ok(())
 }
 
