@@ -1,17 +1,15 @@
 use anyhow::Result;
-use plonky2::hash::merkle_tree::{self, MerkleTree};
-use plonky2::hash::poseidon::{PoseidonHash, self};
+use plonky2::field::goldilocks_field::GoldilocksField;
+use plonky2::hash::merkle_tree::{MerkleCap, MerkleTree};
+use plonky2::hash::poseidon::PoseidonHash;
 use plonky2::iop::target::Target;
-use rand::rngs::OsRng;
-use rand::{RngCore, SeedableRng};
-use rand_chacha::ChaCha8Rng;
+use plonky2::field::types::Field;
 
 use std::time::Instant;
-use plonky2::field::types::Field;
 use plonky2::iop::witness::{PartialWitness, WitnessWrite};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::{CircuitConfig, CommonCircuitData, VerifierOnlyCircuitData, VerifierCircuitData};
-use plonky2::plonk::config::{AlgebraicHasher, GenericConfig, PoseidonGoldilocksConfig};
+use plonky2::plonk::config::{AlgebraicHasher, GenericConfig, PoseidonGoldilocksConfig, Hasher};
 use plonky2::plonk::proof::ProofWithPublicInputs;
 use plonky2::hash::hash_types::RichField;
 use plonky2::field::extension::Extendable;
@@ -29,12 +27,11 @@ pub struct ProofTuple<F: RichField+Extendable<D>, C:GenericConfig<D, F=F>, const
 
 
 // generates ground proof for a step
-pub fn ground_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F=F>, const D: usize, const B: usize>(inp1: &[F; 4], inp2: &[F; 4])->ProofTuple<F,C,D>{
+pub fn ground_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F=F>, const D: usize, const B: usize>(inp1: &Vec<F>, inp2: &Vec<F>)->ProofTuple<F,C,D>{
     
     let config = CircuitConfig::standard_recursion_config();
     let mut builder = CircuitBuilder::<F, D>::new(config);
     // make zeros public in somehow
-    let real_zero : [Target; 4] = builder.add_virtual_targets(4).try_into().unwrap();
 //    let zero_hash = builder.hash_n_to_hash_no_pad::<PoseidonHash>(real_zero.to_vec());
 
     // aritmatic circuit to input1 = input2 or input2 = 0 
@@ -169,7 +166,7 @@ pub fn run<
         F: RichField + Extendable<D>,
         C:GenericConfig<D, F=F>,
         H: plonky2::plonk::config::Hasher<F>,
-        const D: usize> (_init_value: u64)
+        const D: usize> (inputs1: Vec<Vec<F>>, inputs2: Vec<Vec<F>>)
             ->
         Result<VerifierCircuitData<F,C,D>>
             where
@@ -186,26 +183,14 @@ pub fn run<
 
     let tmp = Instant::now();
 
-    // generate 4 random [F; 4] arrays
-    let inputs1 = [[F::ONE, F::ZERO, F::ZERO, F::ZERO],
-    [F::ZERO, F::ONE, F::ZERO, F::ZERO],
-    [F::ZERO, F::ZERO, F::ONE, F::ZERO],
-    [F::ZERO, F::ZERO, F::ZERO, F::ONE]];
-    let mut inputs2 = inputs1.clone();
-    inputs2[0][0] = F::ZERO;
-    
-
 
     // Trivial proof phase computation, it can be separated into the precompute phase with the small modification of the circuit; and recursive circuit
     let mut trivial_proofs = Vec::new();
-    println!("GİRMEDİ");
     trivial_proofs.push(ground_proof::<F,C,D,BATCH_SIZE>(&inputs1[0], &inputs2[0]));
     for i in 1..BATCH_SIZE {
-        println!("GROUND PUBLICS: {:#?}", trivial_proofs[i-1].proof.public_inputs);
         trivial_proofs.push(ground_proof::<F,C,D,BATCH_SIZE>(&inputs1[i], &inputs2[i]));
 
     }
-    println!("FOR LOOOOP FİNİSHED");
     println!("Lets come to final proof!");
     let final_proof = recursive_tree::<F,C,D>(0, BATCH_SIZE, DEPTH, &trivial_proofs);
     println!("Final proofs public inputs: {:#?}", final_proof.proof.public_inputs);
@@ -224,7 +209,27 @@ pub fn run<
         final_proof.proof.public_inputs,
      );
     println!("Proof size: {} bytes\n",final_proof.proof.to_bytes().len());
+
+    println!("Last Proof Verification");
     Ok(VerifierCircuitData::<F,C,D>{verifier_only: final_proof.vd, common: final_proof.cd})
+}
+
+pub fn roots<F: RichField, H: Hasher<F>>(
+    merkle_cap: &MerkleCap<F, H>,
+) -> H::Hash {
+    let mut new_cap = merkle_cap.clone();
+    for i in 0..2 {
+        let left = new_cap.0[2*i];
+        let right = new_cap.0[2*i+1];
+        new_cap.0[i] = H::two_to_one(left, right);
+    }
+    for i in 0..1 {
+        let left = new_cap.0[2*i];
+        let right = new_cap.0[2*i+1];
+        new_cap.0[i] = H::two_to_one(left, right);
+    }
+    return new_cap.0[0];
+
 }
 
 pub fn test() -> Result<()> {
@@ -233,47 +238,42 @@ pub fn test() -> Result<()> {
     type C = PoseidonGoldilocksConfig;
     type F = <C as GenericConfig<D>>::F;
     type H = <C as GenericConfig<D>>::Hasher;
-    
-    let rng_seed = OsRng::default().next_u64();
-    let rng = ChaCha8Rng::seed_from_u64(rng_seed);
 
-    let input = F::ONE;
+    let original_leaves: Vec<Vec<F>> = 
+    [[F::ONE, F::ZERO, F::ZERO, F::ZERO].to_vec(),
+    [F::ZERO, F::ONE, F::ZERO, F::ZERO].to_vec(),
+    [F::ZERO, F::ZERO, F::ONE, F::ZERO].to_vec(),
+    [F::ZERO, F::ZERO, F::ZERO, F::ONE].to_vec()].to_vec();
+
+    let mut subset_leaves = original_leaves.clone();
+    subset_leaves[0][0] = F::ZERO;
+
     let init_value = 5;
     
-    let vd1 = run::<F,C,H,D>(init_value)?; // Currently not using rayon. Maybe should (it gives some performance gain even on my machine).
+    let vd1 = run::<F,C,H,D>(original_leaves.clone(), subset_leaves.clone())?; // Currently not using rayon. Maybe should (it gives some performance gain even on my machine).
 
     println!("Run again to check that the verifier data of the final proof is the same!\n");
 
 
-    let vd2 = run::<F,C,H,D>(init_value)?;
+    let vd2 = run::<F,C,H,D>(original_leaves.clone(), subset_leaves.clone())?;
 
     println!("Checking that verifier circuit data is the same for two proofs! \n");
 
     assert_eq!(vd1.verifier_only, vd2.verifier_only);
     assert_eq!(vd1.common, vd2.common);
     println!("Victory! :3");
+
+    // Choose the height of the Merkle cap. It should be less than or equal to log2 of the number of leaves.
+    let cap_height = 2; // Choose a suitable value here.
+
+    // Create a new Merkle tree.
+    let original_merkle_tree: MerkleTree<GoldilocksField, PoseidonHash> = MerkleTree::<F, H>::new(original_leaves.clone(), cap_height);
+    println!("ROOT {:#?} ", roots(&original_merkle_tree.cap));
+
     Ok(())
 }
 
-fn verif () {
-    const D: usize = 2;
-    type C = PoseidonGoldilocksConfig;
-    type F = <C as GenericConfig<D>>::F;
-    type H = <C as GenericConfig<D>>::Hasher;
-    
-
-    let safe_inputs: Vec<Vec<F>> =  
-    [[F::ONE, F::ZERO, F::ZERO, F::ZERO].to_vec(),
-    [F::ZERO, F::ONE, F::ZERO, F::ZERO].to_vec(),
-    [F::ZERO, F::ZERO, F::ONE, F::ZERO].to_vec(),
-    [F::ZERO, F::ZERO, F::ZERO, F::ONE].to_vec()].to_vec();
-
-    let safe_merkle_tree: MerkleTree<F, H >  = 
-    merkle_tree::MerkleTree::new(safe_inputs, 2);
-    println!("MERKLE ROOT {:#?} ",safe_merkle_tree.prove(0).siblings);
-}
 
 fn main() -> Result<()> {
-    verif();
     test()
 }

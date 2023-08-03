@@ -1,7 +1,7 @@
 
 use plonky2::{
     field::{goldilocks_field::GoldilocksField, types::Field},
-    hash::{merkle_tree::MerkleTree, merkle_proofs::verify_merkle_proof_to_cap, hash_types::RichField},
+    hash::{merkle_tree::MerkleTree, hash_types::RichField},
     hash::{poseidon::PoseidonHash, merkle_tree::MerkleCap, merkle_proofs::MerkleProof}, plonk::config::Hasher
 };
 use anyhow::{Result, Ok, ensure};
