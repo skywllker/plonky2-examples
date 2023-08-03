@@ -1,5 +1,6 @@
 use anyhow::Result;
-use plonky2::hash::poseidon::PoseidonHash;
+use plonky2::hash::merkle_tree::{self, MerkleTree};
+use plonky2::hash::poseidon::{PoseidonHash, self};
 use plonky2::iop::target::Target;
 use rand::rngs::OsRng;
 use rand::{RngCore, SeedableRng};
@@ -13,8 +14,8 @@ use plonky2::plonk::circuit_data::{CircuitConfig, CommonCircuitData, VerifierOnl
 use plonky2::plonk::config::{AlgebraicHasher, GenericConfig, PoseidonGoldilocksConfig};
 use plonky2::plonk::proof::ProofWithPublicInputs;
 use plonky2::hash::hash_types::RichField;
-
 use plonky2::field::extension::Extendable;
+
 
 // Recursively validated proof of 5**x 
 #[derive(Clone)]
@@ -167,6 +168,7 @@ pub fn recursive_tree<F: RichField + Extendable<D>, C:GenericConfig<D, F=F>, con
 pub fn run<
         F: RichField + Extendable<D>,
         C:GenericConfig<D, F=F>,
+        H: plonky2::plonk::config::Hasher<F>,
         const D: usize> (_init_value: u64)
             ->
         Result<VerifierCircuitData<F,C,D>>
@@ -215,6 +217,11 @@ pub fn run<
 
     println!("Allegedly, the result of our poseidon is: {:#?}",
         final_proof.proof.public_inputs,
+    );
+    println!("XXXXXXXXXXXXXXXXXXXXX");
+
+    println!("Allegedly, the result of our poseidon is: {:#?}",
+        final_proof.proof.public_inputs,
      );
     println!("Proof size: {} bytes\n",final_proof.proof.to_bytes().len());
     Ok(VerifierCircuitData::<F,C,D>{verifier_only: final_proof.vd, common: final_proof.cd})
@@ -225,6 +232,7 @@ pub fn test() -> Result<()> {
     const D: usize = 2;
     type C = PoseidonGoldilocksConfig;
     type F = <C as GenericConfig<D>>::F;
+    type H = <C as GenericConfig<D>>::Hasher;
     
     let rng_seed = OsRng::default().next_u64();
     let rng = ChaCha8Rng::seed_from_u64(rng_seed);
@@ -232,12 +240,12 @@ pub fn test() -> Result<()> {
     let input = F::ONE;
     let init_value = 5;
     
-    let vd1 = run::<F,C,D>(init_value)?; // Currently not using rayon. Maybe should (it gives some performance gain even on my machine).
+    let vd1 = run::<F,C,H,D>(init_value)?; // Currently not using rayon. Maybe should (it gives some performance gain even on my machine).
 
     println!("Run again to check that the verifier data of the final proof is the same!\n");
 
 
-    let vd2 = run::<F,C,D>(init_value)?;
+    let vd2 = run::<F,C,H,D>(init_value)?;
 
     println!("Checking that verifier circuit data is the same for two proofs! \n");
 
@@ -247,7 +255,25 @@ pub fn test() -> Result<()> {
     Ok(())
 }
 
+fn verif () {
+    const D: usize = 2;
+    type C = PoseidonGoldilocksConfig;
+    type F = <C as GenericConfig<D>>::F;
+    type H = <C as GenericConfig<D>>::Hasher;
+    
+
+    let safe_inputs: Vec<Vec<F>> =  
+    [[F::ONE, F::ZERO, F::ZERO, F::ZERO].to_vec(),
+    [F::ZERO, F::ONE, F::ZERO, F::ZERO].to_vec(),
+    [F::ZERO, F::ZERO, F::ONE, F::ZERO].to_vec(),
+    [F::ZERO, F::ZERO, F::ZERO, F::ONE].to_vec()].to_vec();
+
+    let safe_merkle_tree: MerkleTree<F, H >  = 
+    merkle_tree::MerkleTree::new(safe_inputs, 2);
+    println!("MERKLE ROOT {:#?} ",safe_merkle_tree.prove(0).siblings);
+}
 
 fn main() -> Result<()> {
+    verif();
     test()
 }
