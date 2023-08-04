@@ -25,8 +25,8 @@ pub struct ProofTuple<F: RichField+Extendable<D>, C:GenericConfig<D, F=F>, const
 }
 
 pub fn zero_hash<F: RichField, H: Hasher<F>>(
-    input: [F; 4]
 ) -> H::Hash {
+    let input = [F::ZERO, F::ZERO, F::ZERO, F::ZERO];
     let output = H::hash_no_pad(&input);
     output
 }
@@ -282,7 +282,7 @@ pub fn test() -> Result<()> {
     if roots(&subset_merkle_tree.cap).elements == pb12 {
         println!("Subset merkle roots matches");
     }
-    println!("Zero Hash is: {:#?}", zero_hash::<F,H>([F::ZERO, F::ZERO, F::ZERO, F::ZERO]));
+    println!("Zero Hash is: {:#?}", zero_hash::<F,H>());
     Ok(())
 }
 
