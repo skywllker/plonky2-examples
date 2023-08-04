@@ -1,6 +1,5 @@
 use anyhow::Result;
 use plonky2::field::goldilocks_field::GoldilocksField;
-use plonky2::field::zero_poly_coset;
 use plonky2::hash::merkle_tree::{MerkleCap, MerkleTree};
 use plonky2::hash::poseidon::PoseidonHash;
 use plonky2::iop::target::Target;
@@ -227,18 +226,17 @@ pub fn roots<F: RichField, H: Hasher<F>>(
     merkle_cap: &MerkleCap<F, H>,
 ) -> H::Hash {
     let mut new_cap = merkle_cap.clone();
-    for i in 0..2 {
-        let left = new_cap.0[2*i];
-        let right = new_cap.0[2*i+1];
-        new_cap.0[i] = H::two_to_one(left, right);
-    }
-    for i in 0..1 {
-        let left = new_cap.0[2*i];
-        let right = new_cap.0[2*i+1];
-        new_cap.0[i] = H::two_to_one(left, right);
-    }
-    return new_cap.0[0];
+    let mut curr = new_cap.0.len();
 
+    while curr > 1 {
+        curr = curr / 2;
+        for i in 0..curr {
+            let left = new_cap.0[2*i];
+            let right = new_cap.0[2*i+1];
+            new_cap.0[i] = H::two_to_one(left, right);
+        }
+    }
+    new_cap.0[0]
 }
 
 pub fn test() -> Result<()> {
