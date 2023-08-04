@@ -74,9 +74,8 @@ pub fn ground_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F=F>, cons
 }
 
 
-/// This function merges two proofs with 12 public inputs each, treated as follows: from 0 to 3 is "input1", from 4 to 7 is "input2", from 8 to 11 is "zero_hash"
-/// It requires that both zero_hashes are same
-/// We return H(input1[0..4], input2[0..4]), H(input1[4..8], input2[4..8]), and zero_hash as public input
+/// This function merges two proofs with 8 public inputs each, treated as follows: from 0 to 3 is "input1", from 4 to 7 is "input2"
+/// We return H(input1[0..4], input2[0..4]), H(input1[4..8], input2[4..8]) as public inputs
 pub fn recursive_proof<
 F: RichField + Extendable<D>,
 C: GenericConfig<D, F = F>,
@@ -246,6 +245,9 @@ pub fn test() -> Result<()> {
     type F = <C as GenericConfig<D>>::F;
     type H = <C as GenericConfig<D>>::Hasher;
 
+    // we give inputs in here, it works if subset leaves are subset of original leaves
+    // that means if original leaves are like [a, b, c, d], subset leaves should be like
+    // [a, 0, c, d], [0, b, c, d], [a, 0, 0, d] something like that
     let original_leaves: Vec<Vec<F>> = 
     [[F::ONE, F::ZERO, F::ZERO, F::ZERO].to_vec(),
     [F::ZERO, F::ONE, F::ZERO, F::ZERO].to_vec(),
@@ -281,7 +283,6 @@ pub fn test() -> Result<()> {
     if roots(&subset_merkle_tree.cap).elements == pb12 {
         println!("Subset merkle roots matches");
     }
-    println!("Zero Hash is: {:#?}", zero_hash::<F,H>());
     Ok(())
 }
 
