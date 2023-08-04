@@ -1,5 +1,6 @@
 use anyhow::Result;
 use plonky2::field::goldilocks_field::GoldilocksField;
+use plonky2::field::zero_poly_coset;
 use plonky2::hash::merkle_tree::{MerkleCap, MerkleTree};
 use plonky2::hash::poseidon::PoseidonHash;
 use plonky2::iop::target::Target;
@@ -9,7 +10,7 @@ use std::time::Instant;
 use plonky2::iop::witness::{PartialWitness, WitnessWrite};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::{CircuitConfig, CommonCircuitData, VerifierOnlyCircuitData, VerifierCircuitData};
-use plonky2::plonk::config::{AlgebraicHasher, GenericConfig, PoseidonGoldilocksConfig, Hasher};
+use plonky2::plonk::config::{AlgebraicHasher, GenericConfig, PoseidonGoldilocksConfig, Hasher, GenericHashOut};
 use plonky2::plonk::proof::ProofWithPublicInputs;
 use plonky2::hash::hash_types::RichField;
 use plonky2::field::extension::Extendable;
@@ -33,7 +34,7 @@ pub fn zero_hash<F: RichField, H: Hasher<F>>(
 
 // generates ground proof for a step
 pub fn ground_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F=F>, const D: usize, const B: usize>(inp1: &Vec<F>, inp2: &Vec<F>)->ProofTuple<F,C,D>{
-    
+    let hash_of_zero = zero_hash::<F, PoseidonHash>();
     let config = CircuitConfig::standard_recursion_config();
     let mut builder = CircuitBuilder::<F, D>::new(config);
     // make zeros public in somehow
@@ -47,7 +48,7 @@ pub fn ground_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F=F>, cons
         // control for every item of input2 is equal to input1 or zero_hash
         let temp1 = builder.sub(input1[i], input2[i]);
         let temp2 = builder.neg(input2[i]);
-        let temp3 = builder.add_const(temp2, F::ZERO);
+        let temp3 = builder.add_const(temp2, hash_of_zero.elements[i]);
         let temp4 = builder.mul(temp1, temp3);
         builder.assert_zero(temp4);
     }
@@ -254,14 +255,14 @@ pub fn test() -> Result<()> {
     [F::ZERO, F::ZERO, F::ZERO, F::ONE].to_vec()].to_vec();
 
     let mut subset_leaves = original_leaves.clone();
-    subset_leaves[0][0] = F::ZERO;
+    subset_leaves[0] = zero_hash::<F, PoseidonHash>().to_vec();
     
-    let (mut vd1, pb11, pb12)= run::<F,C,H,D>(original_leaves.clone(), subset_leaves.clone()); // Currently not using rayon. Maybe should (it gives some performance gain even on my machine).
+    let (vd1, pb11, pb12)= run::<F,C,H,D>(original_leaves.clone(), subset_leaves.clone()); // Currently not using rayon. Maybe should (it gives some performance gain even on my machine).
     let vd1 = vd1?;
     println!("Run again to check that the verifier data of the final proof is the same!\n");
 
 
-    let (mut vd2, pb21, pb22) = run::<F,C,H,D>(original_leaves.clone(), subset_leaves.clone());
+    let (vd2, _pb21, _pb22) = run::<F,C,H,D>(original_leaves.clone(), subset_leaves.clone());
     let vd2 = vd2?;
     println!("Checking that verifier circuit data is the same for two proofs! \n");
 

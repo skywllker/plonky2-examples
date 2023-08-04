@@ -1,5 +1,5 @@
 # plonky2-examples
-I am trying to learn write zk proof systems with plonky2 and these are my examples
+There are some plonky2 examples
 Equation
 my_factorial
 sudoku
@@ -7,7 +7,7 @@ sudoku
 to execute examples:
 
 ```
-cargo run --release --example {name}
+cargo run --example {name} --release
 ```
 
 you need to use rust nightly version 
